@@ -1,5 +1,6 @@
-import typing
+import math
 import ctypes
+import typing
 
 
 class Header(ctypes.BigEndianStructure):
@@ -76,12 +77,6 @@ class VelodyneDataPacket:
 
         # TODO : crc check
 
-        # forward a bunch of methods from the data
-        # NOTE : why ?
-        # self.__getitem__ = self.data.__getitem__
-        # self.__contains__ = self.data.__contains__
-        # self.__iter__ = self.data.__iter__
-
     @property
     def mic(self) -> int:
         '''model identification code'''
@@ -99,8 +94,44 @@ class VelodyneDataPacket:
 
     @property
     def pseqf(self) -> int:
-        '''payload sequence number withing frame'''
+        '''payload sequence number within frame'''
         return self.footer.pseqf
+
+
+class VelarrayDataPacketConverter:
+    '''convert a datapacket to a numpy array'''
+
+    def __init__(self, distance_resolution: float, vert_offsets: 'list[float]') -> None:
+        '''
+        * `distance_resolution` :   the scaling factor to apply to the incoming distance measurements
+        * `vert_offsets`        :   the vertical offsets to apply to each individual laser channel, indexed by channel
+        '''
+        self.distance_resolution = distance_resolution
+        self.vert_offsets = vert_offsets
+        self._angular_resolution = math.pi/18000
+
+    def construct_point(self, lf: FiringReturn) -> 'tuple[float, ...]':
+        # distance, azimuth and elevation
+        dist = lf.dist * self.distance_resolution
+        if lf.dist == 0:
+            return 4*(math.nan,)
+        azm = lf.azm * self._angular_resolution
+        elv = self.vert_offsets[lf.lcn] + lf.vdfl*self._angular_resolution
+        # transform this to cartesian
+        xy = dist * math.cos(elv)
+        x = xy * math.sin(azm)
+        y = xy * math.cos(azm)
+        z = dist*math.sin(elv)
+
+        return x, y, z, float(lf.rft)
+
+    def _convert(self, packet: VelodyneDataPacket) -> 'typing.Generator[tuple[float, ...], None, None]':
+        '''return a point generator'''
+        return (self.construct_point(lf) for lf in packet.data)
+
+    def convert(self, packet: VelodyneDataPacket) -> 'list[tuple[float, ...]]':
+        '''return the points as a numpy array'''
+        return [self.construct_point(lf) for lf in packet.data]
 
 
 # a mini demo
