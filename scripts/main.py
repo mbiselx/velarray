@@ -4,6 +4,7 @@ import sys
 import yaml
 import math
 import socket
+import typing
 import threading
 from collections import deque
 
@@ -27,6 +28,19 @@ except Exception as e:
 
 _MTU = 2048
 '''maximum transferrable unit'''
+
+_datatype_lookup = {
+    'B': PointField.UINT8,
+    'f': PointField.FLOAT32,
+    'd': PointField.FLOAT64,
+}
+'''trasform from 'struct'-module format characters to PointField codes '''
+
+_datasize_lookup = {
+    'B': 1,
+    'f': 4,
+    'd': 8,
+}
 
 
 class VelarrayDriver:
@@ -60,31 +74,33 @@ class VelarrayDriver:
         self._pub = rospy.Publisher(
             '/velarray/scan', PointCloud2, queue_size=10)
 
-    def pub(self, packets: typing.Iterable[VelodyneDataPacket]):
-        points: np.ndarray = np.array(
-            [self.packet_converter.convert(packet) for packet in packets],
-            dtype=np.float32)
+        # pointcloud stuff
+        self._point_fields = []
+        offset = 0
+        for name, type in zip(self.packet_converter.fields, self.packet_converter.structure.format):
+            self._point_fields.append(PointField(name=name,
+                                                 offset=offset,
+                                                 datatype=_datatype_lookup[type],
+                                                 count=1))
+            offset += _datasize_lookup[type]
+        self._point_step = self.packet_converter.structure.size
 
-        point_fields = [
-            PointField(name=name,
-                       offset=i*points.itemsize,
-                       datatype=PointField.FLOAT32,
-                       count=1)
-            for i, name in zip(range(points.shape[2]), ('x', 'y', 'z', 'intensity'))
-        ]
-        point_step = len(point_fields) * points.itemsize
-        row_step = point_step * points.shape[0]
+    def pub(self, packets: 'list[VelodyneDataPacket]'):
+
+        point_data = b''.join(self.packet_converter.packet_to_bytes(
+            packet) for packet in packets)
+        row_step = self._point_step * len(packets)
 
         pcl = PointCloud2(
             header=self._msg_header,
-            height=points.shape[1],
-            width=points.shape[0],
+            height=160,  # TODO: magic number
+            width=len(packets),
             is_dense=False,
             is_bigendian=False,
-            fields=point_fields,
-            point_step=point_step,
+            fields=self._point_fields,
+            point_step=self._point_step,
             row_step=row_step,
-            data=points.tobytes()
+            data=point_data
         )
         self._pub.publish(pcl)
 

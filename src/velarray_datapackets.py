@@ -1,6 +1,6 @@
 import math
+import struct
 import ctypes
-import typing
 
 
 class Header(ctypes.BigEndianStructure):
@@ -99,7 +99,9 @@ class VelodyneDataPacket:
 
 
 class VelarrayDataPacketConverter:
-    '''convert a datapacket to a numpy array'''
+    '''convert a datapacket to a list of python-readable numbers'''
+    fields = ('x', 'y', 'z', 'distance', 'intensity')
+    structure = struct.Struct('ffffB')
 
     def __init__(self, distance_resolution: float, vert_offsets: 'list[float]') -> None:
         '''
@@ -110,11 +112,11 @@ class VelarrayDataPacketConverter:
         self.vert_offsets = vert_offsets
         self._angular_resolution = math.pi/18000
 
-    def construct_point(self, lf: FiringReturn) -> 'tuple[float, ...]':
+    def construct_point(self, lf: FiringReturn) -> 'tuple[float | int, ...]':
         # distance, azimuth and elevation
         dist = lf.dist * self.distance_resolution
-        if lf.dist == 0:
-            return 4*(math.nan,)
+        if lf.dist == 0:  # invalid point
+            return *(len(self.fields)-1)*(math.nan,), 0
         azm = lf.azm * self._angular_resolution
         elv = self.vert_offsets[lf.lcn] + lf.vdfl*self._angular_resolution
         # transform this to cartesian
@@ -123,15 +125,17 @@ class VelarrayDataPacketConverter:
         y = xy * math.cos(azm)
         z = dist*math.sin(elv)
 
-        return x, y, z, float(lf.rft)
+        return x, y, z, dist, lf.rft
 
-    def _convert(self, packet: VelodyneDataPacket) -> 'typing.Generator[tuple[float, ...], None, None]':
-        '''return a point generator'''
-        return (self.construct_point(lf) for lf in packet.data)
-
-    def convert(self, packet: VelodyneDataPacket) -> 'list[tuple[float, ...]]':
+    def packet_to_list(self, packet: VelodyneDataPacket) -> 'list[tuple[float, ...]]':
         '''return the points as a numpy array'''
-        return [self.construct_point(lf) for lf in packet.data]
+        return [tuple(map(float, self.construct_point(lf))) for lf in packet.data]
+
+    def point_to_bytes(self, lf: FiringReturn) -> bytes:
+        return self.structure.pack(*self.construct_point(lf))
+
+    def packet_to_bytes(self, packet: VelodyneDataPacket):
+        return b''.join(self.point_to_bytes(lf) for lf in packet.data)
 
 
 # a mini demo
