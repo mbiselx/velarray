@@ -2,6 +2,7 @@
 import os
 import sys
 import yaml
+import math
 import typing
 import multiprocessing
 import multiprocessing.connection
@@ -9,7 +10,11 @@ import multiprocessing.connection
 import rospy
 import rospkg
 
+import tf2_ros
+import tf.transformations
+
 from std_msgs.msg import Header
+from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import PointField, PointCloud2
 
 # messing around with paths to get imports to work
@@ -68,6 +73,30 @@ class VelarrayDriver:
             offset += _datasize_lookup[type]
         self._point_step = self.packet_converter.structure.size
 
+    def transform_publisher(self):
+        '''from the tutorial : http://wiki.ros.org/tf2/Tutorials/Writing%20a%20tf2%20static%20broadcaster%20%28Python%29'''
+        tf_broadcaster = tf2_ros.StaticTransformBroadcaster()
+        static_transformStamped = TransformStamped(
+            header=Header(
+                stamp=rospy.Time.now(),
+                frame_id='velarray',
+            ),
+            child_frame_id='velarray_sensor',
+        )
+
+        static_transformStamped.transform.translation.x = float(0.0497)
+        static_transformStamped.transform.translation.y = float(-0.0388)
+        static_transformStamped.transform.translation.z = float(0.0275)
+
+        quat = tf.transformations.quaternion_from_euler(
+            0., 0., math.radians(-30))
+        static_transformStamped.transform.rotation.x = quat[0]
+        static_transformStamped.transform.rotation.y = quat[1]
+        static_transformStamped.transform.rotation.z = quat[2]
+        static_transformStamped.transform.rotation.w = quat[3]
+
+        tf_broadcaster.sendTransform(static_transformStamped)
+
     def publish_loop(self, pipe: multiprocessing.connection.Connection, rate: typing.Optional[rospy.Rate] = None):
         '''loop used to decode incoming UDP stream and send it on as a pointcloud'''
         if rate is None:
@@ -75,8 +104,10 @@ class VelarrayDriver:
         fpscounter = FramerateCounter(10)
         fpscounter.start()
 
+        self.transform_publisher()
+
         # publisher
-        msg_header = Header(frame_id='velarray', stamp=rospy.Time.now())
+        msg_header = Header(frame_id='velarray_sensor', stamp=rospy.Time.now())
         pub = rospy.Publisher(
             f'{rospy.get_name()}/points',
             PointCloud2,
