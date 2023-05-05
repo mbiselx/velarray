@@ -13,5 +13,10 @@ The package was developped for this system, I have not tested it anywhere else :
 Before running the package, a catkin_make is needed.
 
 ```bash
-    rosrun velarray main.py
+    roslaunch velarray velarray.launch
+```
+or 
+
+```bash
+    rosrun velarray node
 ```

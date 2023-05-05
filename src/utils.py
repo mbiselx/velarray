@@ -1,8 +1,7 @@
 
 import time
+import threading
 from collections import deque
-
-from rospy import Time
 
 
 class FramerateCounter:
@@ -10,37 +9,48 @@ class FramerateCounter:
 
     def __init__(self, maxlen: 'int | None' = None):
         self._buffer: deque[float] = deque(maxlen=maxlen)
-        self._last_timestamp: 'float | None' = None
+        '''track frames durations'''
+        self._last_timestamp: float = 0
         self._acc: float = 0
         '''internal accumulator'''
 
-    def new_timestamp(self, __ts: 'float | Time') -> None:
-        '''add a new timestamp'''
-        if isinstance(__ts, Time):
-            __ts = __ts.to_sec()
+        self._thread = threading.Thread(
+            target=self._run,
+            daemon=True
+        )
 
-        if self._last_timestamp is not None:
-            duration = __ts - self._last_timestamp
+    def start(self):
+        self._thread.start()
+
+    def _run(self):
+        '''internal thread to track FPS in the case of a loss of signal'''
+        while True:
+            now = time.time()
+            elapsed = now - self._last_timestamp
+
+            if elapsed > .5 and len(self._buffer) > 0:
+                self._acc -= self._buffer.popleft()
+
+            time.sleep(.5)
+
+    def new_frame(self) -> None:
+        '''add a new timestamp'''
+        now = time.time()
+
+        if self._last_timestamp > 0:
+            elapsed = now - self._last_timestamp
             if len(self._buffer) == self._buffer.maxlen:
                 self._acc -= self._buffer.popleft()
-            self._acc += duration
-            self._buffer.append(duration)
+            self._acc += elapsed
+            self._buffer.append(elapsed)
 
-        self._last_timestamp = __ts
-
-    @property
-    def fps(self) -> float:
-        '''instantaneous framerate. -1 if not defined'''
-        try:
-            return 1/self._buffer[-1]
-        except:
-            return -1.
+        self._last_timestamp = now
 
     @property
     def avg_fps(self) -> float:
         '''average framerate. -1 if not defined'''
         try:
-            return len(self._buffer)/self._acc
+            return len(self._buffer)/(self._acc + (time.time() - self._last_timestamp))
         except:
             return -1.
 
