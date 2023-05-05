@@ -12,6 +12,7 @@ class FramerateCounter:
         self._buffer: deque[float] = deque(maxlen=maxlen)
         self._last_timestamp: 'float | None' = None
         self._acc: float = 0
+        '''internal accumulator'''
 
     def new_timestamp(self, __ts: 'float | Time') -> None:
         '''add a new timestamp'''
@@ -21,7 +22,7 @@ class FramerateCounter:
         if self._last_timestamp is not None:
             duration = __ts - self._last_timestamp
             if len(self._buffer) == self._buffer.maxlen:
-                self._acc -= self._buffer[0]
+                self._acc -= self._buffer.popleft()
             self._acc += duration
             self._buffer.append(duration)
 
@@ -40,5 +41,35 @@ class FramerateCounter:
         '''average framerate. -1 if not defined'''
         try:
             return len(self._buffer)/self._acc
+        except:
+            return -1.
+
+
+class PacketLossCounter:
+    '''track packet loss per time unit'''
+
+    def __init__(self, maxlen: 'int | None' = None):
+        self._buffer: deque[float] = deque(maxlen=maxlen)
+        '''track number of packets lost'''
+        self._timebuffer: deque[float] = deque(maxlen=maxlen)
+        '''track time'''
+        self._acc: float = 0
+        '''internal accumulator'''
+
+    def new_report(self, __lost: int) -> None:
+        '''add a new packet loss entry'''
+
+        self._timebuffer.append(time.time())
+
+        if len(self._buffer) == self._buffer.maxlen:
+            self._acc -= self._buffer.popleft()
+        self._acc += __lost
+        self._buffer.append(__lost)
+
+    @property
+    def avg_loss(self) -> float:
+        '''average losses. -1 if not defined'''
+        try:
+            return self._acc / (self._timebuffer[-1] - self._timebuffer[0])
         except:
             return -1.
