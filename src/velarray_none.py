@@ -82,7 +82,7 @@ class VelarrayDriver:
         self._point_step = self.packet_converter.structure.size
 
         # processes
-        recv_pipe, send_pipe = multiprocessing.Pipe(False)
+        recv_pipe, send_pipe = multiprocessing.Pipe(duplex=False)
         self._recv_pipe = recv_pipe
 
         self._receiver = multiprocessing.Process(
@@ -99,26 +99,25 @@ class VelarrayDriver:
         )
 
     def recv_loop(self, pipe: multiprocessing.connection.Connection):
-        packets: list[bytes] = []
+        packets: list[VelodyneDataPacket] = []
         fpscounter = FramerateCounter(10)
-        losscounter = PacketLossCounter(2000)
+        losscounter = PacketLossCounter(20)
 
-        last_pseq, last_pseqf = -1, -1
+        threading
 
         while not rospy.is_shutdown():
-            packet = self.sock.recv(_MTU)
-            pseq, pseqf = VelodyneDataPacket.get_pseqs(packet)
+            packet = VelodyneDataPacket(self.sock.recv(_MTU))
 
             if len(packets) > 0:
-                if pseqf < last_pseqf:
-                    pipe.send_bytes(b''.join(packets))
+                if packet.pseqf < packets[-1].pseqf:
+                    pipe.send(packets)
                     packets = []
                     fpscounter.new_timestamp(time.time())
+                else:
+                    loss = packet.pseq - packets[-1].pseq - 1
+                    if loss:
+                        losscounter.new_report(loss)
 
-                loss = pseq - last_pseq - 1
-                losscounter.new_report(loss)
-
-            last_pseq, last_pseqf = pseq, pseqf
             packets.append(packet)
 
             rospy.logdebug_throttle(
@@ -133,8 +132,10 @@ class VelarrayDriver:
                 rate.sleep()
                 continue
 
-            frame = pipe.recv_bytes()
-            point_data = self.packet_converter.bytes_to_bytes(frame)
+            frame = pipe.recv()
+
+            point_data = b''.join(self.packet_converter.packet_to_bytes(
+                packet) for packet in frame)
             width = len(point_data)//self._point_step
 
             pcl = PointCloud2(

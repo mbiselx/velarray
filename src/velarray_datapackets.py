@@ -64,8 +64,12 @@ class Footer(ctypes.BigEndianStructure):
 
 class VelodyneDataPacket:
     LASER_FIRES = 160
-    _DATA_START = Header.size
-    _FOOTER_START = _DATA_START + LASER_FIRES * FiringReturn.size
+    _HEADER_END = Header.size
+    _DATA_START = _HEADER_END
+    _DATA_END = _DATA_START + LASER_FIRES * FiringReturn.size
+    _FOOTER_START = _DATA_END
+    _FOOTER_END = _FOOTER_START + Footer.size
+    size = _FOOTER_END
 
     def __init__(self, data: bytes) -> None:
 
@@ -96,6 +100,11 @@ class VelodyneDataPacket:
     def pseqf(self) -> int:
         '''payload sequence number within frame'''
         return self.footer.pseqf
+
+    @staticmethod
+    def get_pseqs(raw_packet: bytes) -> 'tuple[int, int]':
+        '''return pseq, pseqf for a raw datapacket, without needing to parse it'''
+        return int.from_bytes(raw_packet[4:8], 'big'), int(raw_packet[-1])
 
 
 class VelarrayDataPacketConverter:
@@ -136,6 +145,9 @@ class VelarrayDataPacketConverter:
 
     def packet_to_bytes(self, packet: VelodyneDataPacket):
         return b''.join(self.point_to_bytes(lf) for lf in packet.data)
+
+    def bytes_to_bytes(self, packets: bytes):
+        return b''.join(self.packet_to_bytes(VelodyneDataPacket(packets[i:])) for i in range(0, len(packets), VelodyneDataPacket.size))
 
 
 # a mini demo

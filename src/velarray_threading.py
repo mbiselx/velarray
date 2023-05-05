@@ -117,10 +117,9 @@ class VelarrayDriver:
                     self._pack_buf = deque()
                     self._msg_header.stamp = rospy.Time.now()
                     self._fpscounter.new_timestamp(self._msg_header.stamp)
-                else:
-                    loss = packet.pseq - self._pack_buf[-1].pseq - 1
-                    if loss:
-                        self._losscounter.new_report(loss)
+
+                loss = packet.pseq - self._pack_buf[-1].pseq - 1
+                self._losscounter.new_report(loss)
 
             self._pack_buf.append(packet)
 
