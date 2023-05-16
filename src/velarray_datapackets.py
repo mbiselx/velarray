@@ -103,14 +103,17 @@ class VelodyneDataPacket:
 
     @staticmethod
     def get_pseqs(raw_packet: bytes) -> 'tuple[int, int]':
-        '''return pseq, pseqf for a raw datapacket, without needing to parse it'''
+        '''return pseq, pseqf for a raw datapacket, without needing to parse all of it'''
         return int.from_bytes(raw_packet[4:8], 'big'), int(raw_packet[-1])
 
 
 class VelarrayDataPacketConverter:
-    '''convert a datapacket to a list of python-readable numbers'''
-    fields = ('x', 'y', 'z', 'distance', 'intensity')
-    structure = struct.Struct('ffffB')
+    '''
+    convert a datapacket to a list of python-readable numbers. 
+    NOTE : PCL expects intensity as a float, so we convert it here
+    '''
+    fields = ('x', 'y', 'z', 'distance', 'intensity', 'channel')
+    structure = struct.Struct('fffffB')
 
     def __init__(self, distance_resolution: float, vert_offsets: 'list[float]') -> None:
         '''
@@ -125,7 +128,7 @@ class VelarrayDataPacketConverter:
         # distance, azimuth and elevation
         dist = lf.dist * self.distance_resolution
         if lf.dist == 0:  # invalid point
-            return *(len(self.fields)-1)*(math.nan,), 0
+            return tuple(math.nan if f == 'f' else 0 for f in self.structure.format)
         azm = lf.azm * self._angular_resolution
         elv = self.vert_offsets[lf.lcn] + lf.vdfl*self._angular_resolution
         # transform this to cartesian
@@ -133,8 +136,8 @@ class VelarrayDataPacketConverter:
         x = xy * math.sin(azm)
         y = xy * math.cos(azm)
         z = dist*math.sin(elv)
-
-        return x, y, z, dist, lf.rft
+        # return requested data
+        return x, y, z, dist, float(lf.rft), lf.lcn
 
     def packet_to_list(self, packet: VelodyneDataPacket) -> 'list[tuple[float, ...]]':
         '''return the points as a numpy array'''
