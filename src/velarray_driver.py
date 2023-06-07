@@ -49,7 +49,7 @@ class VelarrayDriver:
         rospy.init_node('velarray')
 
         # receiver
-        self._receiver = VelarrayReceiveProcess(2368)
+        self._receiver = VelarrayReceiveProcess(port)
 
         # load configuration
         with open(os.path.join(pckg_path, 'config/M1600.yaml')) as fp:
