@@ -1,3 +1,6 @@
+> [!CAUTION]
+> I am archiving this project, since I no longer have access to the device in question and cannot test any changes. You are of course still free to use it and fork it to continue development, if you so wish. 
+
 # velarray
 Simple ROS driver for a Velodyne [Velarray M1600](https://velodynelidar.com/products/velarray-m1600/).
 
